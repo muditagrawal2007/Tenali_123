@@ -4,7 +4,7 @@
 
 # 🧠 Tenali — Adaptive Math Quiz Platform
 
-### *An advanced,  adaptive learning platform featuring interactive puzzles in Mathematics, Logic, and General Knowledge.*
+### *An adaptive math learning platform with interactive puzzles, real-time multiplayer, and step-by-step explanations.*
 
 <p>
   <a href="https://tenali.fun"><img src="https://img.shields.io/badge/Live-tenali.fun-FF6B6B?style=for-the-badge&logo=globe&logoColor=white" alt="Live"/></a>
@@ -26,7 +26,7 @@
 
 ---
 
-### ✨ **69 puzzle types · 7,662 vocab words · 991 GK questions · Adaptive difficulty · Live multiplayer · Zero question storage**
+### ✨ **69 math topics · Algorithmically generated · Adaptive difficulty · Live multiplayer · Step-by-step solutions**
 
 </div>
 
