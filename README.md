@@ -11,7 +11,7 @@
   <a href="https://github.com/vicharanashala/tenali/stargazers"><img src="https://img.shields.io/github/stars/vicharanashala/tenali?style=for-the-badge&logo=github&color=FFD93D" alt="Stars"/></a>
   <a href="https://github.com/vicharanashala/tenali/network/members"><img src="https://img.shields.io/github/forks/vicharanashala/tenali?style=for-the-badge&logo=github&color=6BCB77" alt="Forks"/></a>
   <a href="https://github.com/vicharanashala/tenali/issues"><img src="https://img.shields.io/github/issues/vicharanashala/tenali?style=for-the-badge&logo=github&color=FF6B6B" alt="Issues"/></a>
-  <a href="CONTRIBUTORS.md"><img src="https://img.shields.io/badge/Contributors-20-4D96FF?style=for-the-badge&logo=github" alt="Contributors"/></a>
+  <a href="https://github.com/vicharanashala/tenali#-contributors"><img src="https://img.shields.io/badge/Contributors-20-4D96FF?style=for-the-badge&logo=github" alt="Contributors"/></a>
 </p>
 
 <p>
@@ -57,7 +57,7 @@
 **🤝 Community**
 - [⚙️ Quick Start](#-quick-start)
 - [🧩 Add a Puzzle](#-add-a-new-puzzle)
-- [🏆 Contributors → CONTRIBUTORS.md](CONTRIBUTORS.md)
+- [🏆 Contributors → vicharanashala/tenali](https://github.com/vicharanashala/tenali#-contributors--real-names--github-ids)
 
 </td>
 </tr>
@@ -75,22 +75,11 @@ It is built to run on a single VPS — `tenali.fun` — with one Node process se
 
 ## 📊 At a Glance
 
-<!-- live-at-a-glance:start -->
-<p align="center">
-  <table>
-    <tr>
-      <td align="center"><b>729</b><br/><sub>commits</sub></td>
-      <td align="center"><b>44</b><br/><sub>PRs merged</sub></td>
-      <td align="center"><b>18</b><br/><sub>GitHub contributors</sub></td>
-      <td align="center"><b>⭐ 6</b><br/><sub>stars</sub></td>
-      <td align="center"><b>🍴 58</b><br/><sub>forks</sub></td>
-      <td align="center"><b>🐛 52</b><br/><sub>open issues</sub></td>
-    </tr>
-  </table>
-</p>
-<!-- live-at-a-glance:end -->
-
-<sub>🤖 _Numbers above refresh automatically on every push to `main` via [`github-actions[bot]`](.github/workflows/update-readme.yml) — no manual edits required._</sub>
+> 📋 **This is a personal fork.** The canonical, always-up-to-date README lives at
+> [**`vicharanashala/tenali`**](https://github.com/vicharanashala/tenali#readme).
+> Live contributor stats, leaderboard, and per-contributor profile cards are auto-refreshed there by `github-actions[bot]` every 12 hours and on every commit.
+>
+> 👉 **Please contribute via [`vicharanashala/tenali`](https://github.com/vicharanashala/tenali) — not this fork.**
 
 ### 🧰 Tech Stack — at a glance
 
@@ -508,71 +497,11 @@ tenali.fun (DNS → <production IP — redacted from public docs>)
 
 ---
 
-## 🏆 Contributors — Real Names & GitHub IDs
+## 🏆 Contributors
 
-> All contributor data below was fetched live from the [GitHub Contributors API](https://github.com/muditagrawal2007/Tenali_123/graphs/contributors). Each contributor card shows the **real name** (from their GitHub profile), their **GitHub ID**, and the **commits they contributed**.
-
-### 🌟 Live Wall (auto-updated)
-
-<a href="https://github.com/muditagrawal2007/Tenali_123/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=muditagrawal2007/Tenali_123&max=100&columns=20" alt="Contributors wall" />
-</a>
-
-### 📊 Repo at a glance
-
-<!-- live-snapshot:start -->
-| 🏆 Commits | 🔀 Merged PRs | 👥 Contributors | 🧩 Puzzles | 📚 Vocab | 🌍 GK |
-|----------:|------------:|--------------:|---------:|-------:|----:|
-| **729** | **44** | **18** | **69** | **7,662** | **991** |
-<!-- live-snapshot:end -->
-
-### 🥇 Leaderboard
-
-<!-- live-rank:start -->
-_Live data — last regenerated 2026-08-03 · auto-refreshed by [`github-actions[bot]`](https://github.com/features/actions) on every push to `main` and every 12h._
-
-| # | 👤 Real Name | 🔗 GitHub ID | 📝 Commits | 🔀 PRs | 🏷️ Role |
-|--:|:-------------|:-------------|----------:|-----:|:--------|
-| 🥇 | **S. R. S. Iyengar**<br/><sub>↳ also commits as <b>sudarshan</b></sub> | [sudarshansudarshan](https://github.com/sudarshansudarshan) | **281** | 0  | Lead Architect · Curriculum Author · 69 puzzle families |
-| 🥈 | **Mudit Agrawal** | [muditagrawal2007](https://github.com/muditagrawal2007) | **135** | 9  | Maintainer · Battle Arena · Linear Algebra · Sudoku · Playground |
-| 🥉 | **Jinal Gupta** | [jgupta05072003-code](https://github.com/jgupta05072003-code) | **57** | 0  | Upstream Repo Maintainer & PR Reviewer |
-| 4. | **Lakshmi Varshini Nandula ** | [varshini-nandula](https://github.com/varshini-nandula) | **43** | 1  | Profile Showcase & Offline Storage |
-| 5. | **Sameer Mishra** | [24F3005086](https://github.com/24F3005086) | **36** | 4  | i18n · Accessibility · Concept Labs |
-| 6. | **Vaibhav Satish**<br/><sub>↳ also commits as <b>Vaibhav</b></sub> | [Vaibhav-sa30](https://github.com/Vaibhav-sa30) | **35** | 2  | Vachana Literacy Lab & Vocabulary |
-| 7. | **DIPTOSUBHRO DATTA**<br/><sub>↳ also commits as <b>Dipto Subhro</b></sub> | [diptosubhro-ctrl](https://github.com/diptosubhro-ctrl) | **33** | 1  | Tutorial System + Noise Filter Refactor |
-| 8. | **Ritish Karmakar** | [Ritish007-svg](https://github.com/Ritish007-svg) | **27** | 1  | Percentages Level-wise Explanation |
-| 9. | **K C Dharshan** | [KCDharshan9](https://github.com/KCDharshan9) | **21** | 1  | Tap-to-Define Word Glossary |
-| 10. | **Ahana Banerjee** | [ahana4banerjee](https://github.com/ahana4banerjee) | **20** | 2  | Goal Practice & Learning Journey |
-| 11. | **Shubh Dixit**<br/><sub>↳ also commits as <b>Shubh dixit</b></sub> | [Shubhdix9](https://github.com/Shubhdix9) | **16** | 2  | Premium UI Suite + Word Games |
-| 12. | **SemiColonSlayer** | [sharonyamita-spec](https://github.com/sharonyamita-spec) | **6** | 1  | Math Detective Agency |
-| 13. | **PANDRAJU POORVI PRAVALLIKA** | [poorvipravallika06](https://github.com/poorvipravallika06) | **6** | 1  | HCF/LCM Interactive Module |
-| 14. | **Rukmender T** | [RukmenderT](https://github.com/RukmenderT) | **5** | 1  | Curiosity Mode |
-| 15. | **S. Hamsalekha**<br/><sub>↳ also commits as <b>S Hamsalekha</b></sub> | [S-Hamsalekha-annamai](https://github.com/S-Hamsalekha-annamai) | **3** | 1  | Track User Progress |
-| 16. | **Krishna Gelra** | [KrishnaG-101](https://github.com/KrishnaG-101) | **3** | 1  | Language Puzzles Framework |
-| 17. | **Anshul Kanodia** | [AnshulKanodia](https://github.com/AnshulKanodia) | **2** | 0  | Geometry Game Restoration |
-| 18. | **Vasuki** | [vasuki-tenali](https://github.com/vasuki-tenali) | **1** | 0  | Infra contributor |
-<!-- live-rank:end -->
-
-
-
-### 🪪 Full Contributor Profiles
-
-> 📋 The full per-contributor cards (avatars, real names, GitHub IDs, location, top features, merged-identity notes) live in a separate file:
+> 👉 **See the canonical, always-up-to-date leaderboard and full contributor cards at [`vicharanashala/tenali`](https://github.com/vicharanashala/tenali#-contributors--real-names--github-ids).**
 >
-> **👉 See [CONTRIBUTORS.md](CONTRIBUTORS.md) for the full profile cards**
->
-> The leaderboard below stays here as the quick-at-a-glance summary — auto-refreshed by [`github-actions[bot]`](.github/workflows/update-readme.yml) on every push to `main` and every 12 hours.
-
----
-
-### 📈 PR Distribution
-
-```
- Feature       ████████████████████████████   24 PRs
- Fix / Bug     ███████████████████           16 PRs
- Chore / Infra █████                           4 PRs
- Docs          █                               1 PR
-```
+> The README in this fork is no longer auto-updated. The upstream repo's bot (`github-actions[bot]`) refreshes the leaderboard every 12 hours and on every commit.
 
 ---
 
