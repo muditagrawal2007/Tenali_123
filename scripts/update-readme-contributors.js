@@ -95,6 +95,34 @@ function stripEmpty(obj) {
   );
 }
 
+// ─── bot filtering ──────────────────────────────────────────────────────────
+// Commits made by automated bots (e.g. `github-actions[bot]` pushing its own
+// README refresh, Dependabot, GitHub's web editor) are excluded from the
+// leaderboard and CHANGELOG so human contributor stats stay accurate.
+// Without this filter, the bot keeps inflating its own commit count every time
+// it runs (every push + every 12h cron = ~2 self-commits/day).
+//
+// A commit is considered bot-authored if EITHER:
+//   - its git author name matches a known bot name, OR
+//   - its git author email matches GitHub's bot noreply pattern
+//     (`[bot]@users.noreply.github.com`, e.g. `41898282+github-actions[bot]@…`)
+const BOT_AUTHOR_NAMES = new Set([
+  'github-actions[bot]',
+  'github-actions-bot',
+  'dependabot[bot]',
+  'dependabot-preview[bot]',
+  'dependabot',
+  'web-flow',
+]);
+
+const BOT_EMAIL_PATTERN = /\[bot\]@users\.noreply\.github\.com$/i;
+
+function isBotAuthor(name, email) {
+  if (name && BOT_AUTHOR_NAMES.has(name)) return true;
+  if (email && BOT_EMAIL_PATTERN.test(email)) return true;
+  return false;
+}
+
 // ─── data gathering ─────────────────────────────────────────────────────────
 
 function gatherGitLog() {
