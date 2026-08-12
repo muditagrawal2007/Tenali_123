@@ -126,16 +126,48 @@ function isBotAuthor(name, email) {
 // ─── data gathering ─────────────────────────────────────────────────────────
 
 function gatherGitLog() {
-  const total = parseInt(sh(`git log --pretty=format:"%H" | wc -l`), 10) || 0;
-  const authorCount = parseInt(
-    sh(`git log --pretty=format:"%ae" | sort -u | wc -l`), 10) || 0;
+  // Pre-pass: collect SHAs of every bot-authored commit so we can filter them
+  // out of every downstream stream (per-author counts, CHANGELOG, file stats).
+  // Single `git log` call — we get sha + name + email together.
+  const botShas = new Set();
+  const botAuthorNamesSeen = new Set();
+  sh(`git log --pretty=format:"%H|%an|%ae"`).split('\n').forEach((line) => {
+    if (!line) return;
+    const [sha, name, email] = line.split('|');
+    if (isBotAuthor(name, email)) {
+      botShas.add(sha);
+      botAuthorNamesSeen.add(name);
+    }
+  });
+  if (botAuthorNamesSeen.size > 0) {
+    log(`  ⊘ filtering ${botShas.size} bot commit(s) from leaderboard (authors: ${[...botAuthorNamesSeen].join(', ')})`);
+  }
+
+  // Helper: returns true for commit SHAs we want to keep (i.e. NOT a bot).
+  const keep = (sha) => !botShas.has(sha);
+
+  // Total commit count — derived from the same stream so it stays in sync
+  // with the filtered per-author map below (no more double-counting bot runs).
+  const total = sh(`git log --pretty=format:"%H|%an|%ae"`)
+    .split('\n').filter(Boolean)
+    .filter((line) => keep(line.split('|')[0])).length;
+
+  // Unique author count — based on the bot-filtered stream.
+  const uniqueEmails = new Set();
+  sh(`git log --pretty=format:"%H|%an|%ae"`).split('\n').forEach((line) => {
+    if (!line) return;
+    const [sha, , email] = line.split('|');
+    if (keep(sha)) uniqueEmails.add(email);
+  });
+  const authorCount = uniqueEmails.size;
 
   // Commits per author (by name as it appears in git log)
   // Emails are NOT collected — kept private, never rendered in the README.
   const byAuthor = {};
-  sh(`git log --pretty=format:"%an|%ae"`).split('\n').forEach((line) => {
+  sh(`git log --pretty=format:"%an|%ae|%H"`).split('\n').forEach((line) => {
     if (!line) return;
-    const [name] = line.split('|');
+    const [name, , sha] = line.split('|');
+    if (!keep(sha)) return;
     byAuthor[name] = (byAuthor[name] || 0) + 1;
   });
 
@@ -156,6 +188,7 @@ function gatherGitLog() {
   //   1. Metadata per commit: sha, shortSha, author, date, subject
   //   2. File stats per commit: which files were touched, +/− line counts
   // These are joined by sha so each commit object carries its full stats.
+  // Bot commits are skipped so the CHANGELOG only shows human activity.
   const commits = sh(`git log --pretty=format:"%H|%h|%an|%ae|%ad|%s" --date=short`)
     .split('\n')
     .filter(Boolean)
@@ -173,7 +206,8 @@ function gatherGitLog() {
         insertions: 0,
         deletions: 0,
       };
-    });
+    })
+    .filter((c) => keep(c.sha));
 
   // Per-commit file stats via `git log --numstat`.
   // Output format:
@@ -189,8 +223,11 @@ function gatherGitLog() {
   for (const rawLine of numstatOutput.split('\n')) {
     if (rawLine.startsWith('COMMIT:')) {
       currentSha = rawLine.slice('COMMIT:'.length).trim();
-      if (currentSha && !statBySha[currentSha]) {
+      // Skip stat collection for bot-authored commits
+      if (currentSha && keep(currentSha) && !statBySha[currentSha]) {
         statBySha[currentSha] = { files: [], add: 0, del: 0 };
+      } else {
+        currentSha = null; // signal to skip subsequent file lines
       }
       continue;
     }
