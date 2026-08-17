@@ -23,6 +23,8 @@
 
 
 
+import { HintModal } from './components/HintSystem/HintModal.jsx';
+import { useQuizHintsAndXp } from './components/HintSystem/useHints.jsx';
 import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import VoiceAssistant from './components/VoiceAssistant';
 import { motion } from 'framer-motion';
@@ -46,7 +48,7 @@ import LinearAlgebraApp from './LinearAlgebraApp'
 function useProgressSubmit(revealed, isCorrect, topic, questionId) {
   useEffect(() => {
     if (!revealed) return;
-    const token = localStorage.getItem('tenali-token');
+    const token = localStorage.getItem('tenali-auth-token');
     if (!token || !topic) return;
 
     const API = import.meta.env.VITE_API_BASE_URL || '';
@@ -67,6 +69,7 @@ function useProgressSubmit(revealed, isCorrect, topic, questionId) {
 
 
 import Vachana from './vachana'
+import ReflectionJournal from './ReflectionJournal'  // Feature CT — platform-wide reflection journal
 import 'chart.js/auto'
 import { Line } from 'react-chartjs-2'
 
@@ -76,6 +79,10 @@ import GlossaryText from './components/GlossaryText'
 import KeyTerms from './components/KeyTerms'
 import InteractiveLcmHcfApp from './LcmHcfApp';
 import IdliVadaSambharApp from './IdliVadaSambharApp';
+import CarJourneyApp from './CarJourneyApp';
+import RealWorldHubApp from './RealWorldHub';
+import { cjTakeReco } from './cjReco'; // Feature CR — Road License difficulty hand-off
+const CJ_RECO_DIFFS = ['easy', 'medium', 'hard', 'extrahard'];
 import VisualMathLabRedux, {
   FrogJumpTemplate,
   MathMachineTemplate,
@@ -87,6 +94,7 @@ import VisualMathLabRedux, {
 } from './VisualMathLabRedux';
 import CoordinateGrid from './components/CoordinateGrid';
 import LanguageDashboard from './language/LanguageDashboard'
+import ContrastChallengeApp, { QuizLayoutExtension } from './ContrastChallengeApp'
 import { VOCAB_CORPUS } from './vocabCorpus'
 import PercentExplanationApp from './PercentExplanationApp'
 import { playSound } from './audioContext'
@@ -107,7 +115,7 @@ import BattleApp from './BattleApp'
 import SudokuApp from './SudokuApp'
 
 // API base URL from environment variables (Vite)
-const API = import.meta.env.VITE_API_BASE_URL || '';
+export const API = import.meta.env.VITE_API_BASE_URL || '';
 
 // Base path the app is mounted at (e.g. '/summership' in production, '' at root).
 // Derived from Vite's build-time base so path routing + internal navigation work
@@ -1718,6 +1726,13 @@ function ScaffoldedTablesApp({ studentName, defaultTable = 2 }) {
   const [appPhase, setAppPhase] = useState('choosing')
   const [currentTable, setCurrentTable] = useState(null)
 
+  // Stable celebration emoji — picked once when the "MASTERED" screen
+  // mounts so the emoji doesn't flicker between 🎉 / 🏆 / ⭐ / 🌟 / 🎊 on
+  // every unrelated re-render (timer ticks, level transitions, etc.).
+  const [masteryEmoji] = useState(
+    () => ['🎉', '🏆', '⭐', '🌟', '🎊'][Math.floor(Math.random() * 5)]
+  )
+
   // ── Level:
   // 1 = show answer (13×2=26, student types 26)
   // 2 = partial table (5 rows, left or right column only)
@@ -2190,7 +2205,7 @@ function ScaffoldedTablesApp({ studentName, defaultTable = 2 }) {
           </h1>
           <div className="welcome-box">
             <p style={{ fontSize: '3rem', margin: '0.5rem 0' }}>
-              {['🎉', '🏆', '⭐', '🌟', '🎊'][Math.floor(Math.random() * 5)]}
+              {masteryEmoji}
             </p>
             <p className="welcome-text" style={{ fontSize: '1.3rem', color: 'var(--clr-accent)' }}>
               Fantastic work! You nailed {MASTERY_STREAK} in a row!
@@ -42398,11 +42413,11 @@ function App() {
       const currentMode = params.get('mode');
       if (mode) {
         if (currentMode !== mode) {
-          window.history.replaceState({}, '', `/?mode=${mode}`);
+          window.history.replaceState({}, '', `${BASE}/?mode=${mode}`);
         }
       } else {
         if (currentMode) {
-          window.history.replaceState({}, '', '/');
+          window.history.replaceState({}, '', `${BASE}/`);
         }
       }
     } catch (e) {
@@ -42429,6 +42444,23 @@ function App() {
   const [celebrationQueue, setCelebrationQueue] = useState([])
   const [transferTopic, setTransferTopic] = useState(null)
   const syncTimeoutRef = useRef(null)
+
+  // Generate confetti particles once per active celebration card so they
+  // don't teleport to new positions on every parent re-render (timer
+  // ticks, theme toggle, etc.). Keyed on the active celebration's identity
+  // so dismissing + re-enqueuing the same card produces a fresh burst.
+  const confettiParticles = React.useMemo(() => {
+    const colors = ['#f59e0b', '#10b981', '#3b82f6', '#ec4899', '#8b5cf6', '#ef4444'];
+    return Array.from({ length: 40 }).map((_, idx) => ({
+      id: idx,
+      left: Math.random() * 100,
+      delay: Math.random() * 2,
+      duration: Math.random() * 2 + 1.5,
+      size: Math.random() * 10 + 6,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      rotation: Math.random() * 360,
+    }));
+  }, [celebrationQueue[0]?.title, celebrationQueue[0]?.message]);
 
   // Journey & Goal states from upstream
   const [isGoalMode, setIsGoalMode] = useState(false)
@@ -42506,7 +42538,7 @@ function App() {
     const fetchJourneyProgress = async () => {
       const API = import.meta.env.VITE_API_BASE_URL || '';
       try {
-        const token = localStorage.getItem('tenali-token');
+        const token = localStorage.getItem('tenali-auth-token');
         if (token) {
           const res = await fetch(`${API}/api/progress`, {
             headers: { 'Authorization': `Bearer ${token}` }
@@ -42737,6 +42769,22 @@ function App() {
   }, [completedTopics, goldMastery, coins, totalSolved, mode]);
 
 
+  // Sync current mode to window global for QuizLayoutExtension
+  useEffect(() => {
+    window.currentTenaliMode = mode;
+  }, [mode])
+
+  // Custom event listener to change modes
+  useEffect(() => {
+    const handleModeChange = (e) => {
+      if (e.detail) {
+        setMode(e.detail);
+      }
+    };
+    window.addEventListener('tenali-change-mode', handleModeChange);
+    return () => window.removeEventListener('tenali-change-mode', handleModeChange);
+  }, []);
+
   // Listen for navigation events from AuthMenu
   useEffect(() => {
     const onNav = (e) => { setMode(e.detail.mode) }
@@ -42772,36 +42820,23 @@ function App() {
       setCelebrationQueue(prev => prev.slice(1));
     };
 
-    // Confetti particles generator (40 random floating pieces)
-    const renderConfetti = () => {
-      return Array.from({ length: 40 }).map((_, idx) => {
-        const left = Math.random() * 100;
-        const delay = Math.random() * 2;
-        const duration = Math.random() * 2 + 1.5;
-        const size = Math.random() * 10 + 6;
-        const colors = ['#f59e0b', '#10b981', '#3b82f6', '#ec4899', '#8b5cf6', '#ef4444'];
-        const color = colors[Math.floor(Math.random() * colors.length)];
-        return (
-          <div
-            key={idx}
-            className="confetti-piece"
-            style={{
-              left: `${left}%`,
-              animationDelay: `${delay}s`,
-              animationDuration: `${duration}s`,
-              backgroundColor: color,
-              width: `${size}px`,
-              height: `${size}px`,
-              transform: `rotate(${Math.random() * 360}deg)`
-            }}
-          />
-        );
-      });
-    };
-
     return (
       <div className="celebration-overlay" onClick={dismissCelebration}>
-        {renderConfetti()}
+        {confettiParticles.map(p => (
+          <div
+            key={p.id}
+            className="confetti-piece"
+            style={{
+              left: `${p.left}%`,
+              animationDelay: `${p.delay}s`,
+              animationDuration: `${p.duration}s`,
+              backgroundColor: p.color,
+              width: `${p.size}px`,
+              height: `${p.size}px`,
+              transform: `rotate(${p.rotation}deg)`
+            }}
+          />
+        ))}
         <div className="celebration-card" onClick={e => e.stopPropagation()}>
           <h2 className="celebration-title">{active.title}</h2>
           <div className="celebration-badge-container">
@@ -42925,7 +42960,7 @@ function App() {
           {theme === 'dark' ? '☀️' : '🌙'}
         </button>
         <div className="app-shell"><div className="card">
-          <RiddleApp onBack={() => { window.location.href = '/' }} />
+          <RiddleApp onBack={() => { window.location.href = withBase('/') }} />
         </div></div>
       </>
     )
@@ -43369,13 +43404,13 @@ function App() {
         <div className="app-shell"><div className="card">
           <ProctoredQuiz
             quizType="linear-algebra"
-            onBack={() => { window.location.href = '/' }}
+            onBack={() => { window.location.href = withBase('/') }}
             autoStartConsent={true}
           >
-            <LinearAlgebraApp onBack={() => { window.location.href = '/' }} />
+            <LinearAlgebraApp onBack={() => { window.location.href = withBase('/') }} />
           </ProctoredQuiz>
         </div></div>
-        <a href="/proctor" className="proctor-dashboard-fab" title="Instructor Dashboard — view all proctor sessions">
+        <a href={withBase('/proctor')} className="proctor-dashboard-fab" title="Instructor Dashboard — view all proctor sessions">
           📊 Dashboard
         </a>
       </>
@@ -43391,7 +43426,7 @@ function App() {
           {theme === 'dark' ? '☀️' : '🌙'}
         </button>
         <div className="app-shell"><div className="card">
-          <ProctorDash onBack={() => { window.location.href = '/' }} />
+          <ProctorDash onBack={() => { window.location.href = withBase('/') }} />
         </div></div>
       </>
     )
@@ -43404,7 +43439,7 @@ function App() {
         <button className="theme-toggle" onClick={toggleTheme} title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}>
           {theme === 'dark' ? '☀️' : '🌙'}
         </button>
-        <PlaygroundApp onBack={() => { window.location.href = '/' }} />
+        <PlaygroundApp onBack={() => { window.location.href = withBase('/') }} />
       </>
     )
   }
@@ -43416,7 +43451,7 @@ function App() {
         <button className="theme-toggle" onClick={toggleTheme} title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}>
           {theme === 'dark' ? '☀️' : '🌙'}
         </button>
-        <BattleApp onBack={() => { window.location.href = '/' }} />
+        <BattleApp onBack={() => { window.location.href = withBase('/') }} />
       </>
     )
   }
@@ -43428,7 +43463,7 @@ function App() {
         <button className="theme-toggle" onClick={toggleTheme} title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}>
           {theme === 'dark' ? '☀️' : '🌙'}
         </button>
-        <SudokuApp onBack={() => { window.location.href = '/' }} />
+        <SudokuApp onBack={() => { window.location.href = withBase('/') }} />
       </>
     )
   }
@@ -43441,7 +43476,7 @@ function App() {
         <button className="theme-toggle" onClick={toggleTheme} title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}>
           {theme === 'dark' ? '\u2600\uFE0F' : '\uD83C\uDF19'}
         </button>
-        <LocalCompilerApp onBack={() => { window.location.href = '/' }} />
+        <LocalCompilerApp onBack={() => { window.location.href = withBase('/') }} />
       </>
     )
   }
@@ -44663,10 +44698,13 @@ function App() {
     integ: IntegApp,               // Integration
     stdform: StdFormApp,           // Standard Form
     bounds: BoundsApp,             // Bounds
-    sdt: SDTApp,                   // Speed, Distance, Time
+    sdt: SDTApp,
+    contrastlist: ContrastChallengeApp,   // Contrast Challenge
     variation: VariationApp,       // Variation
     hcflcm: InteractiveLcmHcfApp,  // HCF & LCM
     idlivada: IdliVadaSambharApp,  // Idli–Vada–Sambhar (Multiples, Common Multiples & LCM)
+    carjourney: CarJourneyApp,     // The Car Journey (Feature CR — 16-stop math road trip)
+    realworld: RealWorldHubApp,    // Real-World hub (Feature CR) — phenomenon pathway cards
     profitloss: ProfitLossApp,     // Profit & Loss
     rounding: RoundingApp,         // Rounding
     binomial: BinomialApp,         // Binomial Theorem
@@ -44862,12 +44900,13 @@ function App() {
         {mode === 'vachana' ? (
           <Vachana onBack={() => setMode(null)} initialAdaptScore={diagnosticState[mode] || 0} />
         ) : (
-          <div className="card">
+          <div className={`card ${mode === 'contrastlist' ? 'is-wide' : ''}`}>
             {renderContent()}
           </div>
         )}
       </div>
       {renderCelebrationModal()}
+      <ReflectionJournal />
     </div>
   )
 }
@@ -44888,6 +44927,7 @@ function Home({ onSelect, completedTopics = [], goldMastery = [], coins = 0, isG
     { key: 'randommix', name: 'Random Mix', subtitle: 'Adaptive cross-topic quiz', color: 'featured' },
     { key: 'custom', name: 'Custom Lesson', subtitle: 'Build your own mixed quiz', color: 'featured' },
     { key: 'gym', name: 'Gym', subtitle: 'Adaptive workout across all 7 gym puzzles', color: 'featured' },
+    { key: 'contrastlist', name: 'Contrast Challenge', subtitle: 'Distinguish similar concepts', color: 'featured' },
     { key: 'vachana', name: 'Vachana', subtitle: 'Mathematical Literacy Lab', color: 'featured' },
   ]
   // Visual Learning Universe lives only in the hamburger menu
@@ -44898,6 +44938,9 @@ function Home({ onSelect, completedTopics = [], goldMastery = [], coins = 0, isG
     ...featuredApps,
     { key: 'curiosity', name: 'Curiosity Mode', subtitle: 'Explore "What if" variations', color: 'pink' },
   ]
+
+  // Set false to remove the Car Journey card from the home grid (hamburger-only mode).
+  const CJ_SHOW_GRID_CARD = true
 
   // All regular quiz apps sorted alphabetically by name
   const regularApps = [
@@ -44975,6 +45018,7 @@ function Home({ onSelect, completedTopics = [], goldMastery = [], coins = 0, isG
     { key: 'sudoku', name: 'Sudoku', subtitle: '9x9 number puzzle — fill every row, column & box', color: 'teal' },
     { key: 'surds', name: 'Surds', subtitle: 'Simplify, add, multiply, rationalise', color: 'green' },
     { key: 'tatsavit', name: 'Tatsavit', subtitle: 'Algebra simplification drill', color: 'blue' },
+    ...(CJ_SHOW_GRID_CARD ? [{ key: 'carjourney', name: 'The Car Journey', subtitle: '16-stop math road trip — counting to calculus', color: 'orange' }] : []),
     { key: 'transform', name: 'Transformations', subtitle: 'Reflect, rotate, translate, enlarge', color: 'purple' },
     { key: 'triangles', name: 'Triangles', subtitle: 'Angle sum, isosceles, exterior', color: 'blue' },
     { key: 'trig', name: 'Trigonometry', subtitle: 'SOH-CAH-TOA, sine/cosine rule', color: 'green' },
@@ -45100,7 +45144,7 @@ function Home({ onSelect, completedTopics = [], goldMastery = [], coins = 0, isG
               <button key={app.key} onClick={() => {
                 setMenuOpen(false);
                 if (app.isRedirect) {
-                  window.location.href = app.path;
+                  window.location.href = withBase(app.path);
                 } else {
                   onSelect(app.key);
                 }
@@ -45114,6 +45158,18 @@ function Home({ onSelect, completedTopics = [], goldMastery = [], coins = 0, isG
                 <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--clr-text-soft)', marginTop: '2px' }}>{app.subtitle}</span>
               </button>
             ))}
+            <div style={{ height: '1px', background: 'var(--clr-border)', margin: '4px 0' }} />
+
+            {/* Real-World hub (Feature CR) — opens the phenomenon pathway cards */}
+            <button onClick={() => { setMenuOpen(false); onSelect('realworld') }} style={{
+              display: 'block', width: '100%', textAlign: 'left', padding: '10px 16px',
+              background: 'none', border: 'none', cursor: 'pointer', color: 'var(--clr-text)',
+              fontFamily: 'var(--font-body)', fontSize: '0.95rem', transition: 'background var(--transition)'
+            }} onMouseEnter={e => e.target.style.background = 'var(--clr-hover-strong)'}
+              onMouseLeave={e => e.target.style.background = 'none'}>
+              <strong style={{ color: 'var(--clr-accent)' }}>🌍 Real-World</strong>
+              <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--clr-text-soft)', marginTop: '2px' }}>Math pathways through real phenomena</span>
+            </button>
             <div style={{ height: '1px', background: 'var(--clr-border)', margin: '4px 0' }} />
 
             <button onClick={() => { setMenuOpen(false); onSelect('goalpractice') }} style={{
@@ -45162,7 +45218,7 @@ function Home({ onSelect, completedTopics = [], goldMastery = [], coins = 0, isG
 
             <div style={{ height: '1px', background: 'var(--clr-border)', margin: '4px 0' }} />
 
-            <button onClick={() => { setMenuOpen(false); window.location.href = '/playground'; }} style={{
+            <button onClick={() => { setMenuOpen(false); window.location.href = withBase('/playground'); }} style={{
               display: 'block', width: '100%', textAlign: 'left', padding: '10px 16px',
               background: 'none', border: 'none', cursor: 'pointer', color: 'var(--clr-text)',
               fontFamily: 'var(--font-body)', fontSize: '0.95rem', transition: 'background var(--transition)'
@@ -47350,6 +47406,7 @@ function GKApp({ onBack, markTopicCompleted, isGoalMode = false }) {
   }, [isGoalMode]);
   // Timer for tracking response time per question
   const timer = useTimer()
+  const { hintsUsedCount, xpBreakdown, bonusLoading } = useQuizHintsAndXp('gk', finished, score, totalQ, typeof isCorrect !== 'undefined' ? (isCorrect || false) : false, results);
   // Guard ref: prevents double-fetch from React StrictMode concurrent effect invocations
   const fetchingRef = useRef(false)
   // Tracks the in-flight question fetch so unmounting can cancel it — the
@@ -47614,7 +47671,8 @@ function GKApp({ onBack, markTopicCompleted, isGoalMode = false }) {
         <ResultsTable results={results} />
         <button onClick={() => { setStarted(false); setFinished(false) }}>Play Again</button>
       </div>}
-    </QuizLayout>
+    <HintModal concept={'gk'} questionId={question?.id || 'unknown'} questionData={question} revealed={revealed} hintsUsedCount={hintsUsedCount} xpBreakdown={xpBreakdown} bonusLoading={bonusLoading} />
+</QuizLayout>
   )
 }
 
@@ -49951,7 +50009,7 @@ function AdditionApp({ onBack, completedTopics = [], goldMastery = [], markTopic
   // Mode selection: 'standard' (default), 'counting' (Visual Counting), 'scale' (Balance Scale)
   const [additionMode, setAdditionMode] = useState(initialMode || 'standard')
   // Difficulty level: 'easy' (1-digit), 'medium' (2-digit), 'hard' (3-digit), 'extrahard' (4-digit)
-  const [difficulty, setDifficulty] = useState(initialDifficulty || 'easy')
+  const [difficulty, setDifficulty] = useState(() => initialDifficulty || cjTakeReco('addition', CJ_RECO_DIFFS) || 'easy')
   // Adaptive mode enabled?
   const [isAdaptive, setIsAdaptive] = useState(false)
   // Adaptive score (0-3)
@@ -51555,7 +51613,7 @@ function GymQuiz({ title, subtitle, typeKeys, welcomeText, algebraInput, onBack 
  */
 function BasicArithApp({ onBack, completedTopics = [], goldMastery = [], markTopicCompleted, setTransferTopic, setMode, isGoalMode = false }) {
   // Difficulty level: 'easy', 'medium', 'hard', 'extrahard'
-  const [difficulty, setDifficulty] = useState('easy')
+  const [difficulty, setDifficulty] = useState(() => cjTakeReco('basicarith', CJ_RECO_DIFFS) || 'easy')
   // Adaptive mode enabled?
   const [isAdaptive, setIsAdaptive] = useState(false)
   // Adaptive score (0-3)
@@ -51904,7 +51962,7 @@ const fetchQuestion = async () => {
  */
 function QuadraticApp({ onBack, isGoalMode = false }) {
   // Difficulty level: 'easy', 'medium', 'hard', 'extrahard'
-  const [difficulty, setDifficulty] = useState('easy')
+  const [difficulty, setDifficulty] = useState(() => cjTakeReco('quadratic', CJ_RECO_DIFFS) || 'easy')
   // Adaptive mode enabled?
   const [isAdaptive, setIsAdaptive] = useState(false)
   // Adaptive score (0-3)
@@ -53914,6 +53972,7 @@ function makeMCQuizApp({ title, subtitle, apiPath, diffLabels, tip, adaptiveOnly
     const [correctOption, setCorrectOption] = useState('')
     const [questionSummary, setQuestionSummary] = useState({ easy: 0, medium: 0, hard: 0, extrahard: 0 })
     const timer = useTimer()
+  const { hintsUsedCount, xpBreakdown, bonusLoading } = useQuizHintsAndXp(apiPath.split('-')[0], finished, score, totalQ, typeof isCorrect !== 'undefined' ? (isCorrect || false) : false, results);
     const advanceFnRef = useRef(null)
     const adaptScoreRef = useRef(0)
     const submittedRef = useRef(false)
@@ -54225,7 +54284,8 @@ function makeMCQuizApp({ title, subtitle, apiPath, diffLabels, tip, adaptiveOnly
           <ResultsTable results={results} />
           <button onClick={() => { setStarted(false); setFinished(false) }}>Play Again</button>
         </div>}
-      </QuizLayout>
+      <HintModal concept={apiPath.split('-')[0]} questionId={question?.id || 'unknown'} questionData={question} revealed={revealed} hintsUsedCount={hintsUsedCount} xpBreakdown={xpBreakdown} bonusLoading={bonusLoading} />
+</QuizLayout>
     )
   }
 }
@@ -54577,7 +54637,8 @@ function TransferChallengeApp({ topicKey, onBack, completedTopics, goldMastery, 
 function makeQuizApp({ title, subtitle, apiPath, diffLabels, placeholders, tip, answerField, topicKey: customTopicKey }) {
   return function GeneratedQuizApp({ onBack, completedTopics = [], goldMastery = [], markTopicCompleted, markGoldMastery, updateCoins, setMode, setTransferTopic, initialDifficulty, initialNumQuestions, initialStarted, isGoalMode = false }) {
     const diffs = Object.keys(diffLabels)
-    const [difficulty, setDifficulty] = useState(initialDifficulty || diffs[0])
+    // Feature CR: a just-earned Road License pre-selects the earned difficulty (one-shot; student can change it)
+    const [difficulty, setDifficulty] = useState(() => initialDifficulty || cjTakeReco(customTopicKey || apiPath.replace('-api', ''), diffs) || diffs[0])
     const topicKey = customTopicKey || apiPath.replace('-api', '')
     const [isAdaptive, setIsAdaptive] = useState(false)
     const [adaptScore, setAdaptScore] = useState(0) // 0.0 (easy) → 3.0 (extrahard)
@@ -54603,6 +54664,7 @@ function makeQuizApp({ title, subtitle, apiPath, diffLabels, placeholders, tip, 
   }, [isGoalMode]);
     const [results, setResults] = useState([])
     const timer = useTimer()
+  const { hintsUsedCount, xpBreakdown, bonusLoading } = useQuizHintsAndXp(apiPath.split('-')[0], finished, score, totalQ, typeof isCorrect !== 'undefined' ? (isCorrect || false) : false, results);
     const advanceFnRef = useRef(null)
     // Keep a ref for adaptive score so loadQuestion always sees latest
     const adaptScoreRef = useRef(0)
@@ -54941,7 +55003,8 @@ function makeQuizApp({ title, subtitle, apiPath, diffLabels, placeholders, tip, 
           <ResultsTable results={results} />
           <button onClick={() => { setStarted(false); setFinished(false) }}>Play Again</button>
         </div>}
-      </QuizLayout>
+      <HintModal concept={apiPath.split('-')[0]} questionId={question?.id || 'unknown'} questionData={question} revealed={revealed} hintsUsedCount={hintsUsedCount} xpBreakdown={xpBreakdown} bonusLoading={bonusLoading} />
+</QuizLayout>
     )
   }
 }
@@ -55909,6 +55972,7 @@ function GymApp({ onBack }) {
   const [loading, setLoading] = useState(false)
   const [loadError, setLoadError] = useState('')
   const timer = useTimer()
+  const { hintsUsedCount, xpBreakdown, bonusLoading } = useQuizHintsAndXp('gym', finished, score, totalQ, typeof isCorrect !== 'undefined' ? (isCorrect || false) : false, results);
   const sessionGoal = 'standard'
   const isAdaptive = true
   const handleTimeout = async () => {
@@ -57584,6 +57648,7 @@ function RandomMixApp({ onBack, isGoalMode = false }) {
     }
   }, [isGoalMode]);
   const timer = useTimer()
+  const { hintsUsedCount, xpBreakdown, bonusLoading } = useQuizHintsAndXp('mix', finished, score, totalQ, typeof isCorrect !== 'undefined' ? (isCorrect || false) : false, results);
   const advanceFnRef = useRef(null)
   const submittedRef = useRef(false)
   const advancedRef = useRef(false)
@@ -57913,7 +57978,8 @@ function RandomMixApp({ onBack, isGoalMode = false }) {
             <button onClick={startQuiz}>Start Random Mix</button>
           </div>
         </div>
-      </QuizLayout>
+      <HintModal concept={'mix'} questionId={question?.id || 'unknown'} questionData={question} revealed={revealed} hintsUsedCount={hintsUsedCount} xpBreakdown={xpBreakdown} bonusLoading={bonusLoading} />
+</QuizLayout>
     )
   }
 
@@ -58085,6 +58151,7 @@ function SetsApp({ onBack, isGoalMode = false }) {
     }
   }, [isGoalMode]);
   const timer = useTimer()
+  const { hintsUsedCount, xpBreakdown, bonusLoading } = useQuizHintsAndXp('sets', finished, score, totalQ, typeof isCorrect !== 'undefined' ? (isCorrect || false) : false, results);
   const advanceFnRef = useRef(null)
   const advancedRef = useRef(false)
   const submittedRef = useRef(false)
@@ -58290,7 +58357,8 @@ const loadQuestion = async () => {
         <ResultsTable results={results} />
         <button onClick={() => { setStarted(false); setFinished(false) }}>Play Again</button>
       </div>}
-    </QuizLayout>
+    <HintModal concept={'sets'} questionId={question?.id || 'unknown'} questionData={question} revealed={revealed} hintsUsedCount={hintsUsedCount} xpBreakdown={xpBreakdown} bonusLoading={bonusLoading} />
+</QuizLayout>
   )
 }
 
@@ -58320,6 +58388,7 @@ function SequencesApp({ onBack, isGoalMode = false }) {
     }
   }, [isGoalMode]);
   const timer = useTimer()
+  const { hintsUsedCount, xpBreakdown, bonusLoading } = useQuizHintsAndXp('sequences', finished, score, totalQ, typeof isCorrect !== 'undefined' ? (isCorrect || false) : false, results);
   const advanceFnRef = useRef(null)
   const advancedRef = useRef(false)
   const submittedRef = useRef(false)
@@ -58517,13 +58586,14 @@ const loadQuestion = async () => {
         <ResultsTable results={results} />
         <button onClick={() => { setStarted(false); setFinished(false) }}>Play Again</button>
       </div>}
-    </QuizLayout>
+    <HintModal concept={'sequences'} questionId={question?.id || 'unknown'} questionData={question} revealed={revealed} hintsUsedCount={hintsUsedCount} xpBreakdown={xpBreakdown} bonusLoading={bonusLoading} />
+</QuizLayout>
   )
 }
 
 /* ── Ratio & Proportion App ────────────────────────── */
 function RatioApp({ onBack, completedTopics = [], goldMastery = [], markTopicCompleted, markGoldMastery, updateCoins, setMode, setTransferTopic, isGoalMode = false }) {
-  const [difficulty, setDifficulty] = useState('easy')
+  const [difficulty, setDifficulty] = useState(() => cjTakeReco('ratio', CJ_RECO_DIFFS) || 'easy')
   const [isAdaptive, setIsAdaptive] = useState(false)
   const [adaptScore, setAdaptScore] = useState(0)
   const adaptScoreRef = useRef(0)
@@ -58557,6 +58627,7 @@ function RatioApp({ onBack, completedTopics = [], goldMastery = [], markTopicCom
     }
   }, [isGoalMode]);
   const timer = useTimer()
+  const { hintsUsedCount, xpBreakdown, bonusLoading } = useQuizHintsAndXp('ratio', finished, score, totalQ, typeof isCorrect !== 'undefined' ? (isCorrect || false) : false, results);
   const advanceFnRef = useRef(null)
   const advancedRef = useRef(false)
   const submittedRef = useRef(false)
@@ -58795,7 +58866,8 @@ const loadQuestion = async () => {
         <ResultsTable results={results} />
         <button onClick={() => { setStarted(false); setFinished(false) }}>Play Again</button>
       </div>}
-    </QuizLayout>
+    <HintModal concept={'ratio'} questionId={question?.id || 'unknown'} questionData={question} revealed={revealed} hintsUsedCount={hintsUsedCount} xpBreakdown={xpBreakdown} bonusLoading={bonusLoading} />
+</QuizLayout>
   )
 }
 
@@ -59839,6 +59911,7 @@ function IndicesApp({ onBack, isGoalMode = false }) {
     }
   }, [isGoalMode]);
   const timer = useTimer()
+  const { hintsUsedCount, xpBreakdown, bonusLoading } = useQuizHintsAndXp('indices', finished, score, totalQ, typeof isCorrect !== 'undefined' ? (isCorrect || false) : false, results);
   const advanceFnRef = useRef(null)
 
   const effectiveDiff = () => (isAdaptive) ? adaptiveLevel(adaptScoreRef.current) : difficulty
@@ -60087,7 +60160,8 @@ const loadQuestion = async () => {
           <button onClick={() => { setStarted(false); setFinished(false) }}>Play Again</button>
         </div>
       )}
-    </QuizLayout>
+    <HintModal concept={'indices'} questionId={question?.id || 'unknown'} questionData={question} revealed={revealed} hintsUsedCount={hintsUsedCount} xpBreakdown={xpBreakdown} bonusLoading={bonusLoading} />
+</QuizLayout>
   )
 }
 
@@ -60129,6 +60203,7 @@ function SurdsApp({ onBack, isGoalMode = false }) {
     }
   }, [isGoalMode]);
   const timer = useTimer()
+  const { hintsUsedCount, xpBreakdown, bonusLoading } = useQuizHintsAndXp('surds', finished, score, totalQ, typeof isCorrect !== 'undefined' ? (isCorrect || false) : false, results);
   const advanceFnRef = useRef(null)
 
   const effectiveDiff = () => (isAdaptive) ? adaptiveLevel(adaptScoreRef.current) : difficulty
@@ -60410,14 +60485,15 @@ const loadQuestion = async () => {
           <button onClick={() => { setStarted(false); setFinished(false) }}>Play Again</button>
         </div>
       )}
-    </QuizLayout>
+    <HintModal concept={'surds'} questionId={question?.id || 'unknown'} questionData={question} revealed={revealed} hintsUsedCount={hintsUsedCount} xpBreakdown={xpBreakdown} bonusLoading={bonusLoading} />
+</QuizLayout>
   )
 }
 
 function FractionAddApp({ onBack, completedTopics = [], goldMastery = [], markTopicCompleted, markGoldMastery, updateCoins, setMode, setTransferTopic, isGoalMode = false }) {
   // ── State variables ──────────────────────────────────────────────────
   // Difficulty: 'easy' | 'medium' | 'hard' | 'extrahard'
-  const [difficulty, setDifficulty] = useState('easy')
+  const [difficulty, setDifficulty] = useState(() => cjTakeReco('fractionadd', CJ_RECO_DIFFS) || 'easy')
   // Adaptive mode enabled?
   const [isAdaptive, setIsAdaptive] = useState(false)
   // Adaptive score (0-3)
@@ -60462,6 +60538,7 @@ function FractionAddApp({ onBack, completedTopics = [], goldMastery = [], markTo
   }, [isGoalMode]);
   // Timer for per-question timing
   const timer = useTimer()
+  const { hintsUsedCount, xpBreakdown, bonusLoading } = useQuizHintsAndXp('fractionadd', finished, score, totalQ, typeof isCorrect !== 'undefined' ? (isCorrect || false) : false, results);
 
   // ── Refs for auto-advance ────────────────────────────────────────────
   const advanceFnRef = useRef(null)
@@ -60857,7 +60934,8 @@ const loadQuestion = async () => {
           <button onClick={() => { setStarted(false); setFinished(false) }}>Play Again</button>
         </div>
       )}
-    </QuizLayout>
+    <HintModal concept={'fractionadd'} questionId={question?.id || 'unknown'} questionData={question} revealed={revealed} hintsUsedCount={hintsUsedCount} xpBreakdown={xpBreakdown} bonusLoading={bonusLoading} />
+</QuizLayout>
   )
 }
 
@@ -61274,6 +61352,7 @@ function SqrtApp({ onBack, isGoalMode = false }) {
   }, [isGoalMode]);
   // Timer instance for tracking time per question
   const timer = useTimer()
+  const { hintsUsedCount, xpBreakdown, bonusLoading } = useQuizHintsAndXp('sqrt', finished, score, totalQ, typeof isCorrect !== 'undefined' ? (isCorrect || false) : false, results);
   const advanceFnRef = useRef(null)
 
   const effectiveDiff = () => (isAdaptive) ? adaptiveLevel(adaptScoreRef.current) : difficulty
@@ -61517,7 +61596,8 @@ const fetchQuestion = async (step) => {
         <ResultsTable results={results} />
         <button onClick={() => { setStarted(false); setFinished(false) }}>Play Again</button>
       </div>}
-    </QuizLayout>
+    <HintModal concept={'sqrt'} questionId={question?.id || 'unknown'} questionData={question} revealed={revealed} hintsUsedCount={hintsUsedCount} xpBreakdown={xpBreakdown} bonusLoading={bonusLoading} />
+</QuizLayout>
   )
 }
 
@@ -62818,7 +62898,7 @@ const loadQuestion = async () => {
 function SimulApp({ onBack, isGoalMode = false }) {
   // ─────── Quiz State Management ──────────────────────────────────
   // Difficulty level: 'easy' (2×2) | 'hard' (3×3)
-  const [difficulty, setDifficulty] = useState('easy')
+  const [difficulty, setDifficulty] = useState(() => cjTakeReco('simul', CJ_RECO_DIFFS) || 'easy')
   // Adaptive mode enabled?
   const [isAdaptive, setIsAdaptive] = useState(false)
   // Adaptive score (0-3)
@@ -63191,6 +63271,7 @@ function FuncEvalApp({ onBack, isGoalMode = false }) {
   }, [isGoalMode]);
   // Timer instance for tracking elapsed time per question
   const timer = useTimer()
+  const { hintsUsedCount, xpBreakdown, bonusLoading } = useQuizHintsAndXp('funceval', finished, score, totalQ, typeof isCorrect !== 'undefined' ? (isCorrect || false) : false, results);
   const advanceFnRef = useRef(null)
 
   const effectiveDiff = () => (isAdaptive) ? adaptiveLevel(adaptScoreRef.current) : difficulty
@@ -63419,7 +63500,8 @@ const loadQuestion = async () => {
         <ResultsTable results={results} />
         <button onClick={() => { setStarted(false); setFinished(false) }}>Play Again</button>
       </div>}
-    </QuizLayout>
+    <HintModal concept={'funceval'} questionId={question?.id || 'unknown'} questionData={question} revealed={revealed} hintsUsedCount={hintsUsedCount} xpBreakdown={xpBreakdown} bonusLoading={bonusLoading} />
+</QuizLayout>
   )
 }
 
@@ -68120,7 +68202,9 @@ export function QuizLayout({ title, subtitle, onBack, children, timer, sessionGo
         </div>
       </div>
       <h1 style={{ fontSize: 'clamp(1.8rem, 3.8vw, 2.4rem)' }}>{title}</h1>
+      {subtitle && <p className="subtitle">{subtitle}</p>}
       {processedChildren}
+      <QuizLayoutExtension children={children} />
     </>
   )
 }
@@ -68974,9 +69058,9 @@ function ProgressTrackerApp({ onBack }) {
                 {paginated.map(r => {
                   const spd = r.timeTakenSeconds > 0 ? parseFloat(((r.correctAnswers * 60) / r.timeTakenSeconds).toFixed(1)) : 0
                   return (
-                    <tr key={r.id} style={{ borderBottom: '1px solid var(--clr-border)' }}
+                    <tr key={r.id}
                       onClick={() => setSelectedPoint({ record: r, session: sortedRecords.indexOf(r) + 1 })}
-                      style={{ cursor: 'pointer' }}>
+                      style={{ borderBottom: '1px solid var(--clr-border)', cursor: 'pointer' }}>
                       <td style={{ padding: '8px 10px' }}>{formatDate(r.date)}</td>
                       <td style={{ padding: '8px 10px', textAlign: 'center' }}>{r.questionSummary?.easy || 0}</td>
                       <td style={{ padding: '8px 10px', textAlign: 'center' }}>{r.questionSummary?.medium || 0}</td>
@@ -69710,6 +69794,27 @@ function MensurationLabApp({ onBack, initialDifficulty, initialNumQuestions, ini
   };
 
   return <GenericLabApp title="Mensuration" subtitle="Geometry & Shape Puzzles" endpoint="/api/mensuration-lab" onBack={onBack} renderQuestionCustom={renderCustom} initialDifficulty={initialDifficulty} initialNumQuestions={initialNumQuestions} initialStarted={initialStarted} />;
+}
+
+
+export function getLocalXp() {
+  try {
+    const val = localStorage.getItem('tenali_xp');
+    return val ? parseInt(val, 10) : 0;
+  } catch { return 0; }
+}
+
+export function setLocalXp(val) {
+  try { localStorage.setItem('tenali_xp', val.toString()); } catch {}
+  // dispatch event to sync UI if needed
+  window.dispatchEvent(new CustomEvent('tenali_xp_update', { detail: { xp: val } }));
+}
+
+export function changeXp(delta) {
+  const current = getLocalXp();
+  const next = Math.max(0, current + delta);
+  setLocalXp(next);
+  return next;
 }
 
 export default App
