@@ -44644,6 +44644,7 @@ function App() {
     vachana: Vachana,          // Vachana Mathematical Literacy Lab
     linearalgebra: LinearAlgebraApp, // Linear Algebra Module 1
     missionquiz: MissionQuizApp, // Mission-specific Linear Algebra Quiz
+    flashcards: FlashcardApp,  // Mental-math flashcards (10 card kinds)
     'math-lab': MathLabHubApp,
     'visual-math-lab-redux': VisualMathLabRedux,
     'mensuration-lab': MensurationLabApp,
@@ -44947,6 +44948,7 @@ function Home({ onSelect, completedTopics = [], goldMastery = [], coins = 0, isG
     { key: 'battle', name: '⚔️ Battle Arena', subtitle: 'Live fastest-finger duels', color: 'red' },
     { key: 'detective', name: '🔍 Detective Agency', subtitle: 'Solve math mysteries and crack cases!', color: 'indigo' },
     { key: 'comic-addition', name: 'Comic Addition', subtitle: 'Story Mode', color: 'purple' },
+    { key: 'flashcards', name: '⚡ Flashcards', subtitle: 'Mental-math drills: missing-number, doubles, bonds-10, facts', color: 'blue' },
     { key: 'addition', name: 'Addition', subtitle: '20-question addition practice', color: 'blue' },
     { key: 'column-addition', name: 'Column Addition', subtitle: 'Vertical addition with carrying', color: 'blue' },
     { key: 'column-division', name: 'Column Division', subtitle: 'Vertical division with long division', color: 'blue' },
@@ -50696,6 +50698,329 @@ const fetchQuestion = async (selectedDifficulty = difficulty) => {
         <ResultsTable results={results} />
         <button onClick={() => { setStarted(false); setFinished(false) }}>Play Again</button>
       </div>}
+    </QuizLayout>
+  )
+}
+
+/**
+ * FlashcardApp — single-input, single-answer flashcards for building mental-math fluency.
+ * Drives 10 card kinds (missing-add, missing-sub, doubles, bonds10, fact-family, make10,
+ * word-add, mult-facts, squares, primes) via the /flashcard-api endpoints. The selected
+ * `cardKind` is the mode key passed in via initialMode / setMode.
+ *
+ * UX:
+ *   setup  →  playing (one big card with prompt + single numeric/text answer box)
+ *             → flipped (shows correct vs wrong, hint + explanation, Next button)
+ *   finished  → results table with streak + accuracy
+ *
+ * Auto-flips after Submit; Enter advances to next card.
+ */
+function FlashcardApp({ onBack, initialMode, initialNumQuestions, initialDifficulty, markTopicCompleted }) {
+  const [difficulty, setDifficulty] = useState(initialDifficulty || 'easy')
+  const [cardKind, setCardKind] = useState(initialMode && initialMode !== 'standard' ? initialMode : 'missing-add')
+  const [numQuestions, setNumQuestions] = useState(initialNumQuestions || String(DEFAULT_TOTAL))
+  const [started, setStarted] = useState(false)
+  const [finished, setFinished] = useState(false)
+  const [question, setQuestion] = useState(null)
+  const [answer, setAnswer] = useState('')
+  const [revealed, setRevealed] = useState(false)
+  const [isCorrect, setIsCorrect] = useState(null)
+  const [feedback, setFeedback] = useState('')
+  const [hintShown, setHintShown] = useState(false)
+  const [score, setScore] = useState(0)
+  const [streak, setStreak] = useState(0)
+  const [bestStreak, setBestStreak] = useState(0)
+  const [qIndex, setQIndex] = useState(0)
+  const [totalQ, setTotalQ] = useState(Number(initialNumQuestions) || DEFAULT_TOTAL)
+  const [results, setResults] = useState([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const inputRef = useRef(null)
+  const questionAbortRef = useRef(null)
+  useEffect(() => () => questionAbortRef.current?.abort(), [])
+
+  const cardKinds = [
+    { key: 'missing-add', name: 'Missing-Number +', blurb: '? + 5 = 12, fill the blank', icon: '➕' },
+    { key: 'missing-sub', name: 'Missing-Number −', blurb: '15 − ? = 9, fill the blank', icon: '➖' },
+    { key: 'doubles', name: 'Doubles & Near-Doubles', blurb: '6 + 6, 6 + 7 — double trick', icon: '✌️' },
+    { key: 'bonds10', name: 'Number-Bonds to 10', blurb: '? + ? = 10 — foundational', icon: '🔟' },
+    { key: 'fact-family', name: 'Fact-Family Triangles', blurb: '3 • 4 • 7 — sum/diff relationships', icon: '🔺' },
+    { key: 'make10', name: 'Make-10 Strategy', blurb: '8 + 5 → 8 + 2 + 3 → 10 + 3', icon: '🎯' },
+    { key: 'word-add', name: 'Word-Problem +', blurb: 'Sam has 4 apples, gets 3 more…', icon: '📖' },
+    { key: 'mult-facts', name: 'Multiplication Facts', blurb: '×2 to ×12 rapid-fire', icon: '✖️' },
+    { key: 'squares', name: 'Square Numbers', blurb: 'n² for n = 1 to 25', icon: '⬛' },
+    { key: 'primes', name: 'Prime Recognition', blurb: 'Is 17 prime? yes / no', icon: '🔍' },
+  ]
+
+  const loadCard = async () => {
+    questionAbortRef.current?.abort()
+    const ctl = new AbortController()
+    questionAbortRef.current = ctl
+    setLoading(true)
+    setError('')
+    setAnswer('')
+    setRevealed(false)
+    setIsCorrect(null)
+    setFeedback('')
+    setHintShown(false)
+    try {
+      const r = await fetch(`${API}/flashcard-api/question?card=${cardKind}&difficulty=${difficulty}`, { signal: ctl.signal })
+      if (!r.ok) throw new Error(`Server returned ${r.status}`)
+      const data = await r.json()
+      if (!data || !data.prompt) throw new Error('Empty card payload')
+      setQuestion(data)
+      setTimeout(() => { if (inputRef.current) inputRef.current.focus() }, 80)
+    } catch (e) {
+      if (e.name === 'AbortError') return
+      console.error('Flashcard load failed:', e)
+      setError(`Couldn't load a card (${e.message || 'unknown error'}). Tap Retry.`)
+    }
+    setLoading(false)
+  }
+
+  const startQuiz = async () => {
+    const q = Number(numQuestions) || DEFAULT_TOTAL
+    setTotalQ(q); setQIndex(0); setScore(0); setStreak(0); setBestStreak(0); setResults([])
+    setStarted(true); setFinished(false); setError('')
+    await loadCard()
+  }
+
+  const submitAnswer = async () => {
+    if (!question || revealed || loading) return
+    try {
+      const r = await fetch(`${API}/flashcard-api/check`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': authGetToken() ? `Bearer ${authGetToken()}` : '' },
+        body: JSON.stringify({ id: question.id, card: cardKind, expectedAnswer: question.expectedAnswer, userAnswer: answer })
+      })
+      const data = await r.json()
+      const correct = !!data.correct
+      setIsCorrect(correct); setRevealed(true)
+      setFeedback(data.message || (correct ? 'Correct!' : 'Try again'))
+      if (correct) {
+        setScore(s => s + 1)
+        setStreak(s => { const n = s + 1; setBestStreak(b => Math.max(b, n)); return n })
+      } else {
+        setStreak(0)
+      }
+      setResults(prev => [...prev, {
+        prompt: question.prompt,
+        userAnswer: answer || '—',
+        correctAnswer: String(question.expectedAnswer),
+        correct,
+        hint: question.hint,
+        explanation: question.explanation,
+      }])
+    } catch (e) {
+      console.error('Flashcard check failed:', e)
+      setFeedback('Network error while checking.')
+    }
+  }
+
+  const advance = async () => {
+    const next = qIndex + 1
+    if (next >= totalQ) {
+      setFinished(true)
+      if (markTopicCompleted) {
+        const pct = score / totalQ
+        if (pct >= 0.7) markTopicCompleted(`flashcard-${cardKind}`, difficulty)
+      }
+      return
+    }
+    setQIndex(next)
+    await loadCard()
+  }
+
+  const onKey = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      if (revealed) advance()
+      else if (answer.trim() !== '') submitAnswer()
+    }
+  }
+
+  const diffLabels = { easy: 'Easy', medium: 'Medium', hard: 'Hard' }
+  const kindLabel = cardKinds.find(k => k.key === cardKind)?.name || cardKind
+
+  if (!started && !finished) {
+    return (
+      <div style={{ minHeight: '100vh', background: 'var(--clr-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px', fontFamily: 'Inter, sans-serif' }}>
+        <div style={{ background: 'var(--clr-card)', border: '1.5px solid var(--clr-border)', borderRadius: '28px', boxShadow: '0 20px 40px rgba(0,0,0,.45)', padding: '48px 40px', maxWidth: '780px', width: '100%', position: 'relative' }}>
+          <button onClick={onBack} style={{ position: 'absolute', top: '24px', left: '24px', background: 'transparent', border: '1px solid var(--clr-border)', borderRadius: '6px', padding: '6px 14px', color: 'var(--clr-text-soft)', fontFamily: 'Inter, sans-serif', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer' }}>← Home</button>
+          <h1 style={{ fontFamily: 'Georgia, "Times New Roman", serif', fontWeight: 700, fontSize: '42px', color: 'var(--clr-text)', margin: '0 0 8px', textAlign: 'center' }}>⚡ Flashcards</h1>
+          <p style={{ color: 'var(--clr-text-soft)', textAlign: 'center', fontSize: '0.9rem', margin: '0 0 24px' }}>Drill the basics — one quick answer per card</p>
+
+          <h3 style={{ color: 'var(--clr-text)', fontSize: '0.9rem', margin: '12px 0 12px', fontFamily: 'Inter, sans-serif', fontWeight: 700 }}>Pick a card kind:</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '10px', marginBottom: '24px' }}>
+            {cardKinds.map(k => (
+              <button key={k.key} onClick={() => setCardKind(k.key)} title={k.blurb}
+                style={{ background: cardKind === k.key ? 'var(--clr-accent)' : 'transparent', border: cardKind === k.key ? '1px solid var(--clr-accent)' : '1px solid var(--clr-border)', borderRadius: '12px', padding: '12px 14px', color: cardKind === k.key ? '#FFF' : 'var(--clr-text)', fontFamily: 'Inter, sans-serif', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '4px', minHeight: '60px' }}>
+                <span style={{ fontSize: '1rem' }}>{k.icon} {k.name}</span>
+                <span style={{ fontSize: '0.72rem', fontWeight: 400, opacity: 0.8 }}>{k.blurb}</span>
+              </button>
+            ))}
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', marginBottom: '20px', flexWrap: 'wrap' }}>
+            {['easy', 'medium', 'hard'].map(d => (
+              <button key={d} onClick={() => setDifficulty(d)} style={{ background: difficulty === d ? 'var(--clr-accent)' : 'transparent', border: difficulty === d ? '1px solid var(--clr-accent)' : '1px solid var(--clr-border)', borderRadius: '50px', padding: '8px 16px', color: difficulty === d ? '#FFF' : 'var(--clr-text-soft)', fontFamily: 'Inter, sans-serif', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer' }}>{diffLabels[d]}</button>
+            ))}
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '24px' }}>
+            <label style={{ color: 'var(--clr-text-soft)', fontSize: '0.85rem', margin: '0 0 8px' }}>How many cards? (max 100)</label>
+            <input type="text" value={numQuestions} onChange={(e) => { const v = e.target.value; if (v === '' || (/^\d+$/.test(v) && Number(v) <= 100)) setNumQuestions(v) }} style={{ background: 'var(--clr-input)', border: '1px solid var(--clr-border)', borderRadius: '6px', padding: '10px', color: 'var(--clr-text)', fontFamily: 'Inter, sans-serif', fontWeight: 600, fontSize: '0.9rem', width: '100px', textAlign: 'center', outline: 'none' }} placeholder={String(DEFAULT_TOTAL)} />
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'center' }}>
+            <button onClick={startQuiz} style={{ background: 'var(--clr-accent)', border: 'none', borderRadius: '8px', padding: '12px 32px', color: '#FFF', fontFamily: 'Inter, sans-serif', fontWeight: 700, fontSize: '1rem', cursor: 'pointer' }}>Start Flashcards</button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  const pct = totalQ > 0 ? Math.round((qIndex / totalQ) * 100) : 0
+  const showMCQ = question && Array.isArray(question.choices)
+
+  return (
+    <QuizLayout title={`⚡ Flashcards — ${kindLabel}`} onBack={onBack}>
+      {started && !finished && (
+        <div style={{ maxWidth: '720px', margin: '0 auto' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', color: 'var(--clr-text-soft)', fontSize: '0.85rem', fontWeight: 600 }}>
+            <span>Card {qIndex + 1}/{totalQ}</span>
+            <span>Score: {score} · 🔥 Streak: {streak} (best {bestStreak})</span>
+          </div>
+          <div style={{ height: '6px', background: 'var(--clr-border)', borderRadius: '3px', marginBottom: '20px', overflow: 'hidden' }}>
+            <div style={{ width: `${pct}%`, height: '100%', background: 'var(--clr-accent)', transition: 'width 0.3s' }} />
+          </div>
+
+          {error && (
+            <div style={{ padding: '16px', borderRadius: '12px', background: 'rgba(224, 90, 74, 0.15)', border: '2px solid var(--clr-wrong)', color: 'var(--clr-wrong)', fontWeight: 600, marginBottom: '16px' }}>
+              {error}
+              <button onClick={loadCard} style={{ marginLeft: '12px', padding: '6px 14px', borderRadius: '6px', border: 'none', background: 'var(--clr-accent)', color: '#FFF', fontWeight: 600, cursor: 'pointer' }}>Retry</button>
+            </div>
+          )}
+
+          {loading || !question ? (
+            <div className="question-box" style={{ textAlign: 'center', padding: '60px 20px', fontSize: '1.1rem' }}>Loading card…</div>
+          ) : (
+            <>
+              <div style={{
+                background: revealed ? (isCorrect ? 'rgba(92, 184, 122, 0.18)' : 'rgba(224, 90, 74, 0.18)') : 'var(--clr-card)',
+                border: `2px solid ${revealed ? (isCorrect ? 'var(--clr-correct)' : 'var(--clr-wrong)') : 'var(--clr-border)'}`,
+                borderRadius: '20px',
+                padding: '32px 24px',
+                marginBottom: '16px',
+                textAlign: 'center',
+                fontFamily: '"Courier New", monospace',
+                fontSize: '1.8rem',
+                fontWeight: 700,
+                color: 'var(--clr-text)',
+                whiteSpace: 'pre-line',
+                lineHeight: 1.5,
+              }}>
+                {question.prompt}
+                {revealed && (
+                  <div style={{ marginTop: '16px', fontSize: '1rem', fontFamily: 'Inter, sans-serif', fontWeight: 600, color: isCorrect ? 'var(--clr-correct)' : 'var(--clr-wrong)' }}>
+                    {isCorrect ? '✓ Correct!' : `✗ Answer: ${question.expectedAnswer}`}
+                  </div>
+                )}
+              </div>
+
+              {showMCQ ? (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px', marginBottom: '16px' }}>
+                  {question.choices.map((c) => {
+                    const isAnswer = String(c) === String(question.expectedAnswer)
+                    const isPicked = String(answer) === String(c)
+                    let bg = 'var(--clr-card)', br = 'var(--clr-border)', fg = 'var(--clr-text)'
+                    if (revealed) {
+                      if (isAnswer) { bg = 'rgba(92, 184, 122, 0.25)'; br = 'var(--clr-correct)'; fg = 'var(--clr-correct)' }
+                      else if (isPicked && !isAnswer) { bg = 'rgba(224, 90, 74, 0.25)'; br = 'var(--clr-wrong)'; fg = 'var(--clr-wrong)' }
+                    } else if (isPicked) { br = 'var(--clr-accent)' }
+                    return (
+                      <button key={c} onClick={() => { if (!revealed) { setAnswer(String(c)); setTimeout(submitAnswer, 50) } }} disabled={revealed}
+                        style={{ background: bg, border: `2px solid ${br}`, borderRadius: '12px', padding: '16px', color: fg, fontFamily: 'Inter, sans-serif', fontWeight: 700, fontSize: '1.1rem', cursor: revealed ? 'default' : 'pointer' }}>
+                        {c}
+                      </button>
+                    )
+                  })}
+                </div>
+              ) : (
+                <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '16px' }}>
+                  <input
+                    ref={inputRef}
+                    type="text"
+                    inputMode="numeric"
+                    value={answer}
+                    onChange={e => setAnswer(e.target.value)}
+                    onKeyDown={onKey}
+                    disabled={revealed}
+                    placeholder="Your answer"
+                    autoComplete="off"
+                    style={{ background: 'var(--clr-input)', border: '2px solid var(--clr-border)', borderRadius: '12px', padding: '14px 18px', color: 'var(--clr-text)', fontFamily: '"Courier New", monospace', fontWeight: 700, fontSize: '1.4rem', width: '180px', textAlign: 'center', outline: 'none' }}
+                  />
+                </div>
+              )}
+
+              {!revealed && !showMCQ && (
+                <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                  <button onClick={submitAnswer} disabled={!answer || loading} style={{ background: 'var(--clr-accent)', border: 'none', borderRadius: '8px', padding: '12px 28px', color: '#FFF', fontWeight: 700, fontSize: '1rem', cursor: answer ? 'pointer' : 'not-allowed', opacity: answer ? 1 : 0.5 }}>Submit (Enter)</button>
+                  <button onClick={() => setHintShown(true)} disabled={hintShown} style={{ background: 'transparent', border: '1px solid var(--clr-border)', borderRadius: '8px', padding: '12px 24px', color: 'var(--clr-text-soft)', fontWeight: 600, fontSize: '0.9rem', cursor: hintShown ? 'default' : 'pointer', opacity: hintShown ? 0.5 : 1 }}>{hintShown ? 'Hint shown' : '💡 Hint'}</button>
+                </div>
+              )}
+
+              {revealed && question.hint && (
+                <div style={{ marginTop: '12px', padding: '14px 16px', borderRadius: '12px', background: 'var(--clr-input)', color: 'var(--clr-text)', fontSize: '0.9rem', lineHeight: 1.5, whiteSpace: 'pre-line', border: '1px solid var(--clr-border)' }}>
+                  <strong style={{ color: 'var(--clr-accent)' }}>Hint:</strong> {question.hint}
+                  {question.explanation && (
+                    <div style={{ marginTop: '8px', borderTop: '1px solid var(--clr-border)', paddingTop: '8px' }}>
+                      <strong style={{ color: 'var(--clr-accent)' }}>Solution:</strong> {question.explanation}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {revealed && (
+                <div style={{ display: 'flex', justifyContent: 'center', marginTop: '16px' }}>
+                  <button onClick={advance} style={{ background: 'var(--clr-accent)', border: 'none', borderRadius: '8px', padding: '12px 28px', color: '#FFF', fontWeight: 700, fontSize: '1rem', cursor: 'pointer' }}>Next Card → (Enter)</button>
+                </div>
+              )}
+
+              {hintShown && !revealed && question.hint && (
+                <div style={{ marginTop: '12px', padding: '14px 16px', borderRadius: '12px', background: 'rgba(255, 213, 79, 0.12)', color: 'var(--clr-text)', fontSize: '0.9rem', lineHeight: 1.5, whiteSpace: 'pre-line', border: '1px solid rgba(255, 213, 79, 0.4)' }}>
+                  <strong style={{ color: '#FFD93D' }}>Hint:</strong> {question.hint}
+                </div>
+              )}
+            </>
+          )}
+
+          {results.length > 0 && (
+            <details style={{ marginTop: '24px' }}>
+              <summary style={{ cursor: 'pointer', color: 'var(--clr-text-soft)', fontWeight: 600, padding: '8px 0' }}>📋 Card history ({results.length})</summary>
+              <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {results.slice(-10).map((r, i) => (
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', background: 'var(--clr-card)', border: `1px solid ${r.correct ? 'var(--clr-correct)' : 'var(--clr-wrong)'}`, borderRadius: '8px', fontSize: '0.8rem', fontFamily: '"Courier New", monospace' }}>
+                    <span style={{ flex: 1 }}>{r.prompt}</span>
+                    <span style={{ color: r.correct ? 'var(--clr-correct)' : 'var(--clr-wrong)', fontWeight: 700, marginLeft: '12px' }}>{r.userAnswer} → {r.correctAnswer}</span>
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
+        </div>
+      )}
+      {finished && (
+        <div style={{ textAlign: 'center', padding: '24px' }}>
+          <h2 style={{ color: 'var(--clr-text)', marginBottom: '8px' }}>🎉 Done!</h2>
+          <p style={{ color: 'var(--clr-text-soft)', fontSize: '1rem', margin: '0 0 24px' }}>Score: <strong style={{ color: 'var(--clr-correct)' }}>{score}/{totalQ}</strong> · Best streak: <strong>{bestStreak}</strong></p>
+          <ResultsTable results={results} />
+          <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', marginTop: '24px', flexWrap: 'wrap' }}>
+            <button onClick={startQuiz} style={{ background: 'var(--clr-accent)', border: 'none', borderRadius: '8px', padding: '12px 28px', color: '#FFF', fontWeight: 700, fontSize: '1rem', cursor: 'pointer' }}>Play Again</button>
+            <button onClick={() => { setStarted(false); setFinished(false) }} style={{ background: 'transparent', border: '1px solid var(--clr-border)', borderRadius: '8px', padding: '12px 24px', color: 'var(--clr-text-soft)', fontWeight: 600, fontSize: '0.9rem', cursor: 'pointer' }}>Change Card</button>
+          </div>
+        </div>
+      )}
     </QuizLayout>
   )
 }

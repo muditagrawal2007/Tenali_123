@@ -1254,6 +1254,305 @@ app.post('/column-subtraction-api/check', (req, res) => {
 });
 
 /**
+ * FLASHCARD API
+ * ═══════════════════════════════════════════════════════════════════════════
+ * Single-input, single-answer flashcards that drill the BASICS students need to
+ * internalise — missing-number add/sub, doubles, number-bonds, fact-family,
+ * make-10, word-add, multiplication-facts, squares, prime recognition.
+ *
+ * GET  /flashcard-api/question?card=<type>&difficulty=<easy|medium|hard>
+ * POST /flashcard-api/check   { id, card, userAnswer, expectedAnswer, ... }
+ *
+ * Each card type returns an `id`, `card` (the kind), a `prompt` (HTML-friendly
+ * template), the `expectedAnswer`, optional `choices` (for MCQ variants), and
+ * any `hints` / `explanation` strings for the Solve button.
+ */
+
+function flashcardQuestion(card, difficulty) {
+  const d = (difficulty || 'easy').toLowerCase();
+  const easy = d === 'easy';
+  const med = d === 'medium';
+  const hard = d === 'hard';
+
+  if (card === 'missing-add') {
+    const max = hard ? 20 : med ? 15 : 10;
+    const a = randomInt(0, max);
+    const b = randomInt(0, max - a);
+    const sum = a + b;
+    const hidePos = randomInt(0, 3); // 0=a, 1=b, 2=sum
+    const blank = '?';
+    let prompt, answer, hint;
+    if (hidePos === 0) {
+      prompt = `${blank} + ${b} = ${sum}`;
+      answer = a;
+      hint = `Start from ${b} and count up ${a} more to reach ${sum}.`;
+    } else if (hidePos === 1) {
+      prompt = `${a} + ${blank} = ${sum}`;
+      answer = b;
+      hint = `You have ${a}; you need ${sum}. How many more to reach ${sum}?`;
+    } else {
+      prompt = `${a} + ${b} = ${blank}`;
+      answer = sum;
+      hint = `Add the two numbers together.`;
+    }
+    return {
+      id: `fc-ma-${Date.now()}-${randomInt(0, 9999)}`,
+      card, prompt, expectedAnswer: answer, answer,
+      hint, explanation: `${a} + ${b} = ${sum}`,
+    };
+  }
+
+  if (card === 'missing-sub') {
+    const max = hard ? 20 : med ? 15 : 10;
+    let a = randomInt(2, max), b = randomInt(0, a);
+    const diff = a - b;
+    const hidePos = randomInt(0, 3);
+    const blank = '?';
+    let prompt, answer, hint;
+    if (hidePos === 0) {
+      prompt = `${blank} − ${b} = ${diff}`;
+      answer = a;
+      hint = `If ${b} was taken away and ${diff} are left, you must have started with ${a}.`;
+    } else if (hidePos === 1) {
+      prompt = `${a} − ${blank} = ${diff}`;
+      answer = b;
+      hint = `You had ${a} and ended with ${diff}. How many were taken away?`;
+    } else {
+      prompt = `${a} − ${b} = ${blank}`;
+      answer = diff;
+      hint = `Take ${b} away from ${a}.`;
+    }
+    return {
+      id: `fc-ms-${Date.now()}-${randomInt(0, 9999)}`,
+      card, prompt, expectedAnswer: answer, answer,
+      hint, explanation: `${a} − ${b} = ${diff}`,
+    };
+  }
+
+  if (card === 'doubles') {
+    const base = randomInt(1, hard ? 12 : med ? 10 : 9);
+    const isNear = med ? Math.random() < 0.5 : hard ? Math.random() < 0.6 : false;
+    const delta = isNear ? randomInt(1, 3) : 0;
+    const a = base;
+    const b = base + delta;
+    const sum = a + b;
+    const hint = isNear
+      ? `Think double ${base} (which is ${a * 2}), then add ${delta} because ${b} is ${delta} more than ${a}.`
+      : `Doubles are facts like ${a} + ${a}. Just double ${a}.`;
+    return {
+      id: `fc-db-${Date.now()}-${randomInt(0, 9999)}`,
+      card, prompt: `${a} + ${b} = ?`, expectedAnswer: sum, answer: sum,
+      hint, explanation: `${a} + ${b} = ${sum}${isNear ? `  (near-double of ${a})` : `  (double ${a})`}`,
+      isNear,
+    };
+  }
+
+  if (card === 'bonds10') {
+    const a = randomInt(0, 10);
+    const b = 10 - a;
+    const hidePos = randomInt(0, 2);
+    const blank = '?';
+    let prompt, answer, hint;
+    if (hidePos === 0) {
+      prompt = `${blank} + ${b} = 10`;
+      answer = a;
+      hint = `Number-bonds-to-10: ${a} and ${b} always pair to 10.`;
+    } else {
+      prompt = `${a} + ${blank} = 10`;
+      answer = b;
+      hint = `Think of 10 as a full set. You have ${a}; you need ${b} more to make 10.`;
+    }
+    return {
+      id: `fc-b10-${Date.now()}-${randomInt(0, 9999)}`,
+      card, prompt, expectedAnswer: answer, answer,
+      hint, explanation: `${a} + ${b} = 10`,
+    };
+  }
+
+  if (card === 'fact-family') {
+    const a = randomInt(2, med ? 8 : 6);
+    const b = randomInt(1, med ? 8 : 6);
+    const sum = a + b;
+    const mode = randomInt(0, 3);
+    let prompt, answer, hint, explanation;
+    if (mode === 0) {
+      prompt = `Triangle ${a} • ${b} • ${sum}\n${a} + ${b} = ?`;
+      answer = sum;
+      hint = `The sum is the big number (top of triangle); the two small numbers add to it.`;
+      explanation = `${a} + ${b} = ${sum},  ${sum} − ${a} = ${b},  ${sum} − ${b} = ${a}`;
+    } else if (mode === 1) {
+      prompt = `Triangle ${a} • ${b} • ${sum}\n${sum} − ${a} = ?`;
+      answer = b;
+      hint = `The sum minus one of the small numbers gives the other.`;
+      explanation = `${sum} − ${a} = ${b},  ${a} + ${b} = ${sum}`;
+    } else {
+      prompt = `Triangle ${a} • ${b} • ${sum}\n${sum} − ${b} = ?`;
+      answer = a;
+      hint = `If the sum is ${sum} and you take away ${b}, what's left?`;
+      explanation = `${sum} − ${b} = ${a},  ${a} + ${b} = ${sum}`;
+    }
+    return {
+      id: `fc-ff-${Date.now()}-${randomInt(0, 9999)}`,
+      card, prompt, expectedAnswer: answer, answer,
+      hint, explanation,
+    };
+  }
+
+  if (card === 'make10') {
+    const a = randomInt(4, hard ? 9 : med ? 9 : 9);
+    const b = randomInt(3, hard ? 12 : med ? 11 : 10);
+    const sum = a + b;
+    const makeUp = 10 - a;
+    const remainder = b - makeUp;
+    const hint = `Make 10: ${a} needs ${makeUp} more to reach 10. Split ${b} into ${makeUp} + ${remainder}. Then ${a} + ${makeUp} = 10, and 10 + ${remainder} = ${sum}.`;
+    return {
+      id: `fc-m10-${Date.now()}-${randomInt(0, 9999)}`,
+      card, prompt: `${a} + ${b} = ?`, expectedAnswer: sum, answer: sum,
+      hint, explanation: `${a} + ${b} = ${sum}  (Make-10: ${a} + ${makeUp} = 10, then + ${remainder})`,
+      make10: { a, b, makeUp, remainder },
+    };
+  }
+
+  if (card === 'word-add') {
+    const a = randomInt(1, hard ? 12 : med ? 10 : 9);
+    const b = randomInt(1, hard ? 12 : med ? 10 : 9);
+    const sum = a + b;
+    const names = ['Sam', 'Aanya', 'Kunal', 'Diya', 'Vivaan', 'Priya', 'Arjun', 'Meera'];
+    const things = ['apples', 'stickers', 'marbles', 'pencils', 'cookies', 'toffees', 'crayons'];
+    const verbs = ['gets', 'finds', 'receives', 'picks up'];
+    const name = names[randomInt(0, names.length - 1)];
+    const thing = things[randomInt(0, things.length - 1)];
+    const verb = verbs[randomInt(0, verbs.length - 1)];
+    const prompt = `${name} has ${a} ${thing}. ${name} ${verb} ${b} more. How many ${thing} does ${name} have now?`;
+    const hint = `Add the two groups: ${a} + ${b} = ?`;
+    return {
+      id: `fc-wa-${Date.now()}-${randomInt(0, 9999)}`,
+      card, prompt, expectedAnswer: sum, answer: sum,
+      hint, explanation: `${a} + ${b} = ${sum}`,
+    };
+  }
+
+  if (card === 'mult-facts') {
+    const table = easy ? randomInt(2, 6) : med ? randomInt(2, 10) : randomInt(2, 12);
+    const multiplier = easy ? randomInt(2, 9) : med ? randomInt(2, 10) : randomInt(2, 12);
+    const product = table * multiplier;
+    const hide = randomInt(0, 3);
+    let prompt, answer, hint;
+    if (hide === 0) {
+      prompt = `? × ${multiplier} = ${product}`;
+      answer = table;
+      hint = `${multiplier} fits into ${product} how many times? Skip-count by ${multiplier}.`;
+    } else if (hide === 1) {
+      prompt = `${table} × ? = ${product}`;
+      answer = multiplier;
+      hint = `How many ${table}s make ${product}?`;
+    } else {
+      prompt = `${table} × ${multiplier} = ?`;
+      answer = product;
+      hint = `Skip-count by ${table} ${multiplier} times, OR by ${multiplier} ${table} times.`;
+    }
+    return {
+      id: `fc-mf-${Date.now()}-${randomInt(0, 9999)}`,
+      card, prompt, expectedAnswer: answer, answer,
+      hint, explanation: `${table} × ${multiplier} = ${product}`,
+    };
+  }
+
+  if (card === 'squares') {
+    const n = easy ? randomInt(1, 12) : med ? randomInt(1, 15) : randomInt(1, 25);
+    const square = n * n;
+    const showInverse = Math.random() < 0.4;
+    if (showInverse) {
+      const candidates = [n * n];
+      for (let k = 0; k < 3; k++) {
+        const m = randomInt(1, 25);
+        if (m !== n && !candidates.includes(m * m)) candidates.push(m * m);
+      }
+      while (candidates.length < 4) {
+        const m = randomInt(1, 25);
+        if (!candidates.includes(m * m)) candidates.push(m * m);
+      }
+      const choices = [...candidates].sort(() => Math.random() - 0.5);
+      return {
+        id: `fc-sq-${Date.now()}-${randomInt(0, 9999)}`,
+        card,
+        prompt: `√${square} = ?`,
+        expectedAnswer: n, answer: n,
+        choices,
+        hint: `Which number times itself equals ${square}? Try ${Math.floor(Math.sqrt(square))}² = ${Math.floor(Math.sqrt(square)) * Math.floor(Math.sqrt(square))}.`,
+        explanation: `√${square} = ${n}  (because ${n} × ${n} = ${square})`,
+      };
+    }
+    return {
+      id: `fc-sq-${Date.now()}-${randomInt(0, 9999)}`,
+      card,
+      prompt: `${n}² = ?`,
+      expectedAnswer: square, answer: square,
+      hint: `${n}² means ${n} × ${n}.`,
+      explanation: `${n}² = ${n} × ${n} = ${square}`,
+    };
+  }
+
+  if (card === 'primes') {
+    const useYes = Math.random() < 0.5;
+    let n;
+    if (useYes) {
+      const primes = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97];
+      n = primes[randomInt(0, primes.length - 1)];
+    } else {
+      const composites = [4, 6, 8, 9, 10, 12, 14, 15, 16, 18, 20, 21, 22, 24, 25, 26, 27, 28, 30, 32, 33, 34, 35, 36, 38, 39, 40, 42, 44, 45, 46, 48, 49, 50, 51, 52, 54, 55, 56, 57, 58, 60, 62, 63, 64, 65, 66, 68, 69, 70, 72, 74, 75, 76, 77, 78, 80, 81, 82, 84, 85, 86, 87, 88, 90, 91, 92, 93, 94, 95, 96, 98, 99, 100];
+      n = composites[randomInt(0, composites.length - 1)];
+    }
+    const answer = useYes ? 'yes' : 'no';
+    const choices = ['yes', 'no'];
+    let hint;
+    if (useYes) {
+      const factors = [];
+      for (let i = 2; i <= Math.sqrt(n); i++) if (n % i === 0) factors.push(i);
+      hint = factors.length === 0
+        ? `${n} has no factors other than 1 and itself → prime.`
+        : `Try dividing ${n} by 2, 3, 5, 7... If nothing divides cleanly, it's prime.`;
+    } else {
+      const f = [];
+      for (let i = 2; i <= Math.min(n, 9); i++) if (n % i === 0) f.push(i);
+      hint = f.length > 0
+        ? `${n} is divisible by ${f[0]} (since ${n} / ${f[0]} = ${n / f[0]}) → not prime.`
+        : `Check small divisors: 2, 3, 5, 7…`;
+    }
+    return {
+      id: `fc-pr-${Date.now()}-${randomInt(0, 9999)}`,
+      card,
+      prompt: `Is ${n} a prime number?`,
+      expectedAnswer: answer, answer,
+      choices,
+      hint,
+      explanation: `${n} is ${useYes ? 'PRIME' : 'NOT prime'}.`,
+    };
+  }
+
+  return null;
+}
+
+app.get('/flashcard-api/question', (req, res) => {
+  const card = String(req.query.card || 'missing-add');
+  const difficulty = String(req.query.difficulty || 'easy');
+  const q = flashcardQuestion(card, difficulty);
+  if (!q) return res.status(400).json({ error: `Unknown card type: ${card}` });
+  res.json(q);
+});
+
+app.post('/flashcard-api/check', (req, res) => {
+  const { card, expectedAnswer, userAnswer } = req.body || {};
+  const correct = Number(userAnswer) === Number(expectedAnswer)
+    || String(userAnswer).trim().toLowerCase() === String(expectedAnswer).trim().toLowerCase();
+  res.json({
+    correct,
+    correctAnswer: expectedAnswer,
+    message: correct ? 'Correct!' : 'Try again',
+  });
+});
+
+/**
  * QUADRATIC EVALUATION API
  * ═══════════════════════════════════════════════════════════════════════════
  */
