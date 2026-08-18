@@ -346,6 +346,43 @@ async function fetchContributors() {
   return { contributors: enriched, repoStats };
 }
 
+// Fetch every merged PR from the GitHub API, keyed by PR author's GitHub login.
+// Replaces the previous `git log --merges` parser which had three problems:
+//   1. Case mismatch — source-branch prefix is case-preserved ("SaniyaJos/")
+//      while the contributor's login is lowercase ("saniyajos").
+//   2. Fork-username drift — some contributors PR from a fork whose owner
+//      name differs from their canonical login (e.g. `bangerashreejal-cs/`
+//      vs login `shreejal-bangera`).
+//   3. Invisible squash/rebase-merged PRs — the repo allows all three merge
+//      strategies, so PRs merged with squash or rebase leave no
+//      "Merge pull request" entry in `git log` and were never counted.
+//
+// The API returns `user.login` (canonical) and includes a `merged_at`
+// timestamp on every merged PR, so we get accurate PR counts for every
+// contributor regardless of how their PR landed.
+async function fetchMergedPRs() {
+  log('Fetching merged PRs from GitHub API…');
+  const prsByLogin = {};
+  let totalMerged = 0;
+  for (let page = 1; page <= 20; page++) {
+    const list = await ghFetch(
+      `/repos/${REPO}/pulls?state=closed&per_page=100&page=${page}&sort=created&direction=desc`
+    );
+    if (!list || !Array.isArray(list) || list.length === 0) break;
+    for (const pr of list) {
+      if (!pr.merged_at) continue;            // skip closed-but-not-merged PRs
+      const login = pr.user && pr.user.login;
+      if (!login) continue;                  // skip PRs from deleted accounts
+      prsByLogin[login] = prsByLogin[login] || new Set();
+      prsByLogin[login].add(pr.number);
+      totalMerged += 1;
+    }
+    if (list.length < 100) break;
+  }
+  log(`  → ${totalMerged} merged PRs across ${Object.keys(prsByLogin).length} author(s)`);
+  return prsByLogin;
+}
+
 // Curated fallback profiles — used when GitHub API is rate-limited or for
 // contributors not on GitHub. Each profile carries the "top features" list
 // that drives the bot-generated contributor cards section.
@@ -1085,7 +1122,16 @@ async function main() {
     log('⚠ API fetch failed entirely, using fallback profiles only:', e.message);
   }
 
-  const rows = mergeData(git, apiContribs);
+  // Fetch merged PRs separately so we can count them by canonical GitHub
+  // login (immune to case, fork-username, and merge-strategy quirks).
+  let apiPRsByLogin = {};
+  try {
+    apiPRsByLogin = await fetchMergedPRs();
+  } catch (e) {
+    log('⚠ merged-PR API fetch failed, falling back to git-log parser:', e.message);
+  }
+
+  const rows = mergeData(git, apiContribs, apiPRsByLogin);
 
   const banner = rows.length > 0
     ? `_Live data — last regenerated ${new Date().toISOString().split('T')[0]} · auto-refreshed by [\`github-actions[bot]\`](https://github.com/features/actions) on every push to \`main\` and every 12h._`
