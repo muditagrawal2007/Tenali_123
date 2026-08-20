@@ -738,7 +738,7 @@ const GIT_NAME_TO_LOGIN = {
 
 // ─── data merging ───────────────────────────────────────────────────────────
 
-function mergeData(git, apiContribs) {
+function mergeData(git, apiContribs, apiPRsByLogin = {}) {
   // Join git commits by author name → login → API profile (or fallback).
   // For git author names NOT in GIT_NAME_TO_LOGIN, auto-create a synthetic
   // entry so any new contributor shows up immediately (bot is future-proof).
@@ -757,13 +757,46 @@ function mergeData(git, apiContribs) {
     byLogin[login].commits += count;
   }
 
+  // Surface contributors who only have merged PRs but no direct git commits.
+  // Common cause: PR was squash-merged by a maintainer, so the resulting
+  // commit author is the maintainer, not the contributor. Without this step
+  // they'd be invisible in the leaderboard even though their code shipped.
+  // Fork-user aliases are merged into the canonical login to avoid duplicates.
+  const apiPRsOnlyLogins = [];
+  for (const login of Object.keys(apiPRsByLogin)) {
+    const canonical = FORK_USER_ALIASES[login] || login;
+    if (!byLogin[canonical]) {
+      byLogin[canonical] = {
+        login: canonical,
+        gitNames: [],
+        commits: 0,
+        prsOnly: true,
+        forkAliases: login !== canonical ? [login] : [],
+      };
+      apiPRsOnlyLogins.push(login);
+    } else if (canonical !== login) {
+      // Existing contributor matched via fork alias — record the alias on their row.
+      byLogin[canonical].forkAliases = byLogin[canonical].forkAliases || [];
+      if (!byLogin[canonical].forkAliases.includes(login)) {
+        byLogin[canonical].forkAliases.push(login);
+      }
+    }
+  }
+  if (apiPRsOnlyLogins.length > 0) {
+    log(`  ℹ surfaced ${apiPRsOnlyLogins.length} PR-only contributor(s): ${apiPRsOnlyLogins.join(', ')}`);
+  }
+
   if (unmappedNames.length > 0) {
     log(`  ℹ auto-added ${unmappedNames.length} unmapped git author(s): ${unmappedNames.join(', ')}`);
     log(`     (these will appear in the leaderboard with a generic avatar — add a FALLBACK_PROFILES entry to enrich them)`);
   }
 
-  // PR counts: keyed by github login (source branch prefix)
-  const prsByLogin = git.prsByUser;
+  // PR counts: prefer the GitHub API (`apiPRsByLogin`) which gives accurate,
+  // case-correct counts keyed by canonical GitHub login. Falls back to the
+  // git-log parser (which has case + fork-username + squash-merge issues)
+  // when the API is rate-limited or unavailable.
+  const useApiPRs = Object.keys(apiPRsByLogin).length > 0;
+  const gitPRsByLogin = git.prsByUser;
 
   // Merge profile data — fallback first, API on top but only with non-empty values.
   // If the API `name` equals the login (meaning /users/{login} fetch failed due
@@ -774,11 +807,21 @@ function mergeData(git, apiContribs) {
     const fb = FALLBACK_PROFILES[login] || {};
     const apiClean = stripEmpty(api || {});
     if (apiClean.name === login) delete apiClean.name;
+    const apiPRCount = apiPRsByLogin[login] ? apiPRsByLogin[login].size : 0;
+    // Roll in any PRs that landed under a fork alias (e.g. `bangerashreejal-cs`
+    // → canonical `shreejal-bangera`).
+    let aliasPRCount = 0;
+    for (const [alias, target] of Object.entries(FORK_USER_ALIASES)) {
+      if (target === login && apiPRsByLogin[alias]) {
+        aliasPRCount += apiPRsByLogin[alias].size;
+      }
+    }
+    const gitPRCount = gitPRsByLogin[login] || 0;
     byLogin[login] = {
       ...byLogin[login],
       ...fb,
       ...apiClean,
-      prs: prsByLogin[login] || 0,
+      prs: useApiPRs ? (apiPRCount + aliasPRCount) : gitPRCount,
     };
   }
 
