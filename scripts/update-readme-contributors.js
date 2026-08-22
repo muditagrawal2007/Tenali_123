@@ -732,8 +732,26 @@ const GIT_NAME_TO_LOGIN = {
   'Shubh dixit': 'Shubhdix9',
   Shubh: 'Shubhdix9',
 
+  // harshyy07 — one person, two git author names (harshyy07 + Harsh)
+  Harsh: 'harshyy07',
+
+  // SaniyaJos — git author name matches the canonical GitHub login verbatim;
+  // without this, the auto-derive rule would lowercase it to `saniyajos` and
+  // split the contributor into two rows.
+  SaniyaJos: 'SaniyaJos',
+
   // Vasuki — separate contributor with 1 commit, no GH profile (shown as placeholder)
   Vasuki: 'vasuki-tenali',
+};
+
+// Fork username → canonical GitHub login aliases. Some contributors open PRs
+// from a personal fork whose owner-name differs from their canonical login
+// (e.g. `bangerashreejal-cs` vs `shreejal-bangera`). The API gives us the
+// fork-owner as `user.login`, so without this map we'd surface a duplicate
+// PR-only row. Aliases are merged into the canonical login so commits + PRs
+// land on a single contributor card.
+const FORK_USER_ALIASES = {
+  'bangerashreejal-cs': 'shreejal-bangera',
 };
 
 // ─── data merging ───────────────────────────────────────────────────────────
